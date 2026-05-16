@@ -1,0 +1,394 @@
+---
+title: "Peran Burnout sebagai Mediator dalam Hubungan antara Ketergantungan AI dan Kesiapan Karir Mahasiswa"
+author: "Achmad Solikhin"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    df_print: kable
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 5
+)
+
+library(tidyverse)
+
+# Tema ggplot konsisten di seluruh dokumen
+tema <- theme_minimal(base_size = 12) +
+  theme(plot.title    = element_text(face = "bold"),
+        plot.subtitle = element_text(color = "grey45"),
+        panel.grid.minor = element_blank())
+
+# Fungsi ringkas untuk tabel koefisien
+coef_table <- function(model) {
+  as_tibble(summary(model)$coefficients, rownames = "term") |>
+    rename(estimate = Estimate, se = `Std. Error`,
+           t_value  = `t value`, p_value  = `Pr(>|t|)`) |>
+    mutate(across(where(is.numeric), ~ round(.x, 4)),
+           sig = case_when(p_value < 0.001 ~ "***",
+                           p_value < 0.01  ~ "**",
+                           p_value < 0.05  ~ "*",
+                           TRUE            ~ "ns"))
+}
+```
+
+---
+
+# Latar Belakang
+
+Penggunaan alat kecerdasan buatan (AI) di kalangan mahasiswa meningkat pesat dalam beberapa tahun terakhir. Alat seperti ChatGPT, Claude, dan GitHub Copilot kini digunakan secara luas untuk membantu penyelesaian tugas, pemecahan masalah, hingga persiapan karir. Meskipun AI menawarkan efisiensi, muncul kekhawatiran bahwa ketergantungan berlebihan dapat menghambat perkembangan kompetensi mandiri mahasiswa (Selwyn, 2022).
+
+Di sisi lain, mahasiswa juga menghadapi tekanan karir yang semakin tinggi,  mulai dari kecemasan penempatan kerja, persaingan ketat, hingga ketakutan terhadap otomasi pekerjaan akibat AI. Kondisi ini berpotensi memicu **burnout akademik**, yaitu kelelahan emosional dan kognitif yang berkepanjangan akibat tekanan yang tidak tertangani.
+
+OElh karena itu, Apakah ketergantungan pada AI secara langsung menurunkan kesiapan karir, atau apakah efek tersebut bekerja melalui mekanisme burnout sebagai perantara?
+
+# Rumusan Masala
+
+a. Apakah ketergantungan pada AI berhubungan negatif dengan kesiapan karir mahasiswa?
+b. Apakah ketergantungan pada AI berhubungan positif dengan burnout?
+c. Apakah burnout memediasi hubungan antara ketergantungan AI dan kesiapan karir?
+
+# Tujuan Analisis
+
+a. Menguji model mediasi parsial burnout menggunakan kerangka Baron & Kenny (1986).
+b. Mengidentifikasi apakah pola mediasi berbeda antar program studi.
+c. Menghasilkan insight berbasis data yang relevan untuk kebijakan wellbeing mahasiswa.
+
+# Deskripsi Dataset
+
+```{r load-data}
+df_raw <- read_csv("ai_dependency_career_anxiety_students.csv",show_col_types = FALSE)
+
+cat("Jumlah observasi:", nrow(df_raw), "\n")
+cat("Jumlah variabel :", ncol(df_raw), "\n")
+```
+
+Dataset ini merupakan data sintetis (*synthetic dataset*) yang dibuat menggunakan *latent trait modeling* untuk mensimulasikan perilaku mahasiswa terkait adopsi AI, kecemasan karir, dan indikator kesehatan mental. Data terdiri dari 15.000 observasi dengan 30 variabel yang mencakup demografi, perilaku penggunaan AI, kondisi mental, dan kesiapan karir.
+
+> Note :Data bersifat sintetis, temuan dalam analisis ini tidak dapat digunakan langsung ke populasi nyata. Analisis ini bersifat demonstratif untuk menunjukkan kapabilitas metodologi mediasi.
+
+**Variabel utama yang digunakan:**
+
+| Variabel | Peran | Skala |
+|---|---|---|
+| `ai_dependency_score` | Prediktor (X) | 1–10 |
+| `burnout_score` | Mediator (M) | 1–10 |
+| `overall_career_readiness_score` | Outcome (Y) | 1–10 |
+| `stream` | Variabel subgroup | Kategorikal |
+
+# Persiapan Data dan Data Cleanig
+
+```{r cleaning}
+df <- df_raw |>
+  select(ai_dependency_score,
+         burnout_score,
+         overall_career_readiness_score,
+         stream, gender, college_tier) |>
+  drop_na()
+
+cat("Jumlah BRis Setelah Cleaning:", nrow(df), "\n")
+```
+
+Dari 15.000 observasi awal, seluruh baris memiliki data lengkap pada variabel utama sehingga tidak ada observasi yang dihapus.
+
+# Exploratory Data Analysis
+
+## Analisis Statistik Deskriptif
+
+```{r deskriptif}
+df |>
+  summarise(
+    across(c(ai_dependency_score, burnout_score,
+             overall_career_readiness_score),
+           list(N    = length,
+                Mean = mean,
+                SD   = sd,
+                Min  = min,
+                Max  = max))
+  ) |>
+  pivot_longer(everything(),
+               names_to  = c("Variabel", "Statistik"),
+               names_sep = "__") |>
+  pivot_wider(names_from = Statistik, values_from = value) |>
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+```
+
+Rata-rata AI dependency (4.54) berada di bawah titik tengah skala, menunjukkan sebagian besar mahasiswa belum termasuk golongan sangat bergantung pada AI. Sebaliknya, burnout (5.47) dan kesiapan karir (6.00) berada di sekitar titik tengah, menandakan heterogenitas yang cukup dalam sampel.
+
+## Distribusi Variabel Utama
+
+```{r distribusi, fig.height=9}
+df |>
+  pivot_longer(c(ai_dependency_score, burnout_score,
+                 overall_career_readiness_score),
+               names_to = "variabel", values_to = "skor") |>
+  mutate(variabel = recode(variabel,
+    "ai_dependency_score"            = "AI Dependency (X)",
+    "burnout_score"                  = "Burnout (M)",
+    "overall_career_readiness_score" = "Career Readiness (Y)")) |>
+  ggplot(aes(x = skor, fill = variabel)) +
+  geom_histogram(bins = 10, color = "white", show.legend = FALSE) +
+  facet_wrap(~ variabel, scales = "free_x", ncol = 1) +
+  scale_fill_manual(values = c("skyblue", "orange", "seagreen")) +
+  labs(title    = "Distribusi Tiga Variabel Utama",
+       subtitle = "n = 15.000 observasi · skala 1–10",
+       x = "Skor", y = "Frekuensi") +
+  tema
+```
+
+Distribusi AI dependency cenderung right-skewed, artinya lebih banyak mahasiswa dengan skor rendah hingga sedang. Burnout dan career readiness mendekati distribusi normal, yang mendukung asumsi regresi OLS.
+
+## Korelasi Bivariat
+
+```{r korelasi}
+df |>
+  select(ai_dependency_score, burnout_score,
+         overall_career_readiness_score) |>
+  cor() |>
+  round(3) |>
+  as_tibble(rownames = "variabel")
+```
+
+Korelasi antara AI dependency dan burnout (r = 0.37) lebih kuat dibandingkan korelasi AI dependency dengan career readiness (r = −0.13), yang menjadi sinyal awal bahwa burnout berperan sebagai jalur mekanisme yang relevan.
+
+## Perbandingan antar Program Studi
+
+```{r per-stream}
+df |>
+  group_by(stream) |>
+  summarise(n          = n(),
+            ai_dep     = round(mean(ai_dependency_score), 2),
+            burnout    = round(mean(burnout_score), 2),
+            career_rdy = round(mean(overall_career_readiness_score), 2)) |>
+  arrange(desc(ai_dep))
+```
+
+Mahasiswa CS/IT memiliki rata-rata AI dependency tertinggi (5.53) dibandingkan program studi lainnya (3.83–3.93). Meskipun burnout mereka juga tertinggi, career readiness tidak berbeda signifikan antar program studi yang menunjukkan kemungkinan adanya faktor kompensasi lain.
+
+# Metodologi
+
+Analisis mediasi menggunakan kerangka **Baron & Kenny (1986)**, yang menguji mediasi melalui empat model regresi OLS secara berurutan:
+
+| Langkah | Model | Path |
+|---|---|---|
+| 1 | X → Y | c (total effect) |
+| 2 | X → M | a |
+| 3 | M → Y | b |
+| 4 | X + M → Y | c' (direct effect) |
+
+Efek tidak langsung (*indirect effect*) dihitung sebagai perkalian koefisien **a × b**. Tipe mediasi ditentukan berdasarkan signifikansi path c' pada langkah 4: jika c' tidak signifikan maka *full mediation*, jika c' masih signifikan maka *partial mediation*.
+
+# Analisis Mediasi
+
+## 1. Total Effect (path c): X $\to$ Y
+
+```{r step1}
+model_c <- lm(overall_career_readiness_score ~ ai_dependency_score,
+              data = df)
+coef_table(model_c)
+```
+
+**Interpretasi:** AI dependency berhubungan negatif dan signifikan dengan career readiness (b = −0.091, p < 0.001). Syarat pertama Baron & Kenny terpenuhi sehingga analisis dapat dilanjutkan ke langkah berikutnya.
+
+## Step 2 — Path a: X $\to$ M
+
+```{r step2}
+model_a <- lm(burnout_score ~ ai_dependency_score, data = df)
+coef_table(model_a)
+```
+
+**Interpretasi:** Setiap peningkatan 1 poin AI dependency berhubungan dengan peningkatan burnout sebesar 0.33 poin (p < 0.001). Ini adalah jalur terkuat dalam model, dengan R² = 13.7% maka burnout sebagian besar dapat diprediksi dari ketergantungan AI.
+
+```{r plot-path-a}
+ggplot(df, aes(x = ai_dependency_score, y = burnout_score)) +
+  geom_point(alpha = 0.08, size = 0.8) +
+  geom_smooth(method = "lm", color = "#D85A30", linewidth = 1.2) +
+  labs(title    = "AI Dependency - Burnout",
+       subtitle = "r = 0.37 · b = +0.33 · p < 0.001",
+       x = "AI Dependency Score", y = "Burnout Score") +
+  tema
+```
+
+## Step 3 & 4 — Path b + Direct Effect (c'): X + M $\to$ Y
+
+```{r step34}
+model_cprime <- lm(overall_career_readiness_score ~
+                     ai_dependency_score + burnout_score,
+                   data = df)
+coef_table(model_cprime)
+```
+
+**Interpretasi:**
+
+- Koefisien burnout (b = −0.113, p < 0.001) menunjukkan bahwa setelah AI dependency dikontrol, burnout masih berhubungan negatif dengan career readiness.
+- Koefisien AI dependency turun dari −0.091 (path c) menjadi −0.053 (path c') sehingga penurunan ini menunjukkan bahwa sebagian efek AI dependency "tersalurkan" melalui burnout.
+
+```{r plot-path-b}
+ggplot(df, aes(x = burnout_score, y = overall_career_readiness_score)) +
+  geom_point(alpha = 0.08, size = 0.8) +
+  geom_smooth(method = "lm", color = "#1D9E75", linewidth = 1.2) +
+  labs(title    = "Path b  ·  Burnout → Career Readiness",
+       subtitle = "r = −0.18 · b = −0.113 (dikontrol X) · p < 0.001",
+       x = "Burnout Score", y = "Career Readiness Score") +
+  tema
+```
+
+## Ringkasan Indirect Effect
+
+```{r indirect}
+a       <- coef(model_a)["ai_dependency_score"]
+b       <- coef(model_cprime)["burnout_score"]
+c_total <- coef(model_c)["ai_dependency_score"]
+c_prime <- coef(model_cprime)["ai_dependency_score"]
+
+indirect      <- a * b
+prop_mediated <- (indirect / c_total) * 100
+
+tibble(
+  Path  = c("c  — Total effect (X→Y)",
+            "a  — Path a (X→M)",
+            "b  — Path b (M→Y, dikontrol X)",
+            "c' — Direct effect (X→Y | M)",
+            "a×b — Indirect effect",
+            "Proporsi dimediasi (%)"),
+  Nilai = round(c(c_total, a, b, c_prime, indirect, prop_mediated), 4)
+)
+```
+
+# Hasil dan Interpretasi
+
+```{r diagram-mediasi, echo=FALSE, fig.width=8, fig.height=3.5}
+# Diagram sederhana menggunakan ggplot
+tibble(
+  x    = c(0, 5, 10),
+  y    = c(1, 3,  1),
+  lab  = c("AI Dependency\n(X)",
+           "Burnout\n(M)",
+           "Career Readiness\n(Y)"),
+  warna = c("X","M","Y")
+) -> nodes
+
+ggplot() +
+  # Kotak node
+  geom_tile(data = nodes, aes(x = x, y = y, fill = warna),
+            width = 2.8, height = 0.9, color = "white", linewidth = 0.8) +
+  # Label 
+  geom_text(data = nodes, aes(x = x, y = y, label = lab),
+            size = 3.5, fontface = "bold", color = "white") +
+  # path a
+  annotate("segment", x = 1.4, xend = 3.8, y = 1.35, yend = 2.75,
+           arrow = arrow(length = unit(0.25, "cm")),
+           color = "#D85A30", linewidth = 1.2) +
+  annotate("text", x = 2.5, y = 2.3, label = "a = +0.330***",
+           size = 3.2, color = "#993C1D") +
+  # path b
+  annotate("segment", x = 6.2, xend = 8.6, y = 2.75, yend = 1.35,
+           arrow = arrow(length = unit(0.25, "cm")),
+           color = "#1D9E75", linewidth = 1.2) +
+  annotate("text", x = 7.7, y = 2.3, label = "b = −0.113***",
+           size = 3.2, color = "#0F6E56") +
+  # path c' 
+  annotate("segment", x = 1.4, xend = 8.6, y = 0.85, yend = 0.85,
+           arrow = arrow(length = unit(0.25, "cm")),
+           color = "#378ADD", linewidth = 1, linetype = "dashed") +
+  annotate("text", x = 5, y = 0.55,
+           label = "c' = −0.053***  (direct effect)",
+           size = 3.2, color = "#185FA5") +
+  annotate("text", x = 5, y = 0.1,
+           label = "Indirect (a×b) = −0.037  |  41.2% dimediasi  →  PARTIAL MEDIATION",
+           size = 3.3, color = "#444441", fontface = "italic") +
+  scale_fill_manual(values = c("X" = "#378ADD",
+                                "M" = "#D85A30",
+                                "Y" = "#1D9E75")) +
+  xlim(-1.5, 11.5) + ylim(-0.2, 3.7) +
+  theme_void() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5)) +
+  labs(title = "Diagram Model Mediasi Baron & Kenny")
+```
+
+Berdasarkan hasil analisis mediasi Baron & Kenny, ditemukan bahwa **burnout berfungsi sebagai mediator parsial** dalam hubungan antara ketergantungan AI dan kesiapan karir mahasiswa:
+
+- **Path c (−0.091, p < 0.001):** Ketergantungan AI berhubungan negatif dengan kesiapan karir secara keseluruhan.
+- **Path a (+0.330, p < 0.001):** Ketergantungan AI berhubungan positif dan kuat dengan burnout yang menandakn bahwa ini jalur mediasi yang paling konsisten dan kuat.
+- **Path b (−0.113, p < 0.001):** Burnout berhubungan negatif dengan kesiapan karir setelah ketergantungan AI dikontrol.
+- **Direct effect c' (−0.053, p < 0.001):** Efek langsung AI dependency masih signifikan setelah burnout dikontrol, mengonfirmasi tipe mediasi **parsial**.
+- **Indirect effect a×b = −0.037:** Sebesar **41.2%** dari total efek AI dependency terhadap penurunan kesiapan karir bekerja melalui mekanisme burnout.
+
+# Analisis per Program Studi
+
+```{r subgroup}
+streams <- unique(df$stream)
+
+hasil_stream <- map_dfr(streams, function(s) {
+  d  <- filter(df, stream == s)
+  ma <- lm(burnout_score ~ ai_dependency_score, data = d)
+  mc <- lm(overall_career_readiness_score ~
+             ai_dependency_score + burnout_score, data = d)
+  tibble(
+    `Program Studi` = s,
+    N               = nrow(d),
+    `Path a`        = round(coef(ma)["ai_dependency_score"], 4),
+    `Path b`        = round(coef(mc)["burnout_score"], 4),
+    `Indirect (a×b)`= round(coef(ma)["ai_dependency_score"] *
+                            coef(mc)["burnout_score"], 4)
+  )
+}) |>
+  arrange(`Indirect (a×b)`)
+
+hasil_stream
+```
+
+```{r plot-stream}
+ggplot(hasil_stream,
+       aes(x = reorder(`Program Studi`, `Indirect (a×b)`),
+           y = `Indirect (a×b)`,
+           fill = `Program Studi`)) +
+  geom_col(width = 0.55, show.legend = FALSE) +
+  geom_text(aes(label = round(`Indirect (a×b)`, 3)),
+            hjust = -0.2, size = 3.5) +
+  coord_flip() +
+  scale_fill_manual(values = c("#378ADD","#D85A30","#1D9E75","#7F77DD")) +
+  labs(title    = "Indirect Effect (a×b) per Program Studi",
+       subtitle = "Seberapa besar burnout memediasi hubungan AI dep → career readiness",
+       x = NULL, y = "Indirect Effect") +
+  expand_limits(y = min(hasil_stream$`Indirect (a×b)`) * 1.2) +
+  tema
+```
+
+Efek mediasi burnout **paling kuat pada mahasiswa CS/IT**, yang juga memiliki AI dependency tertinggi. Ini menunjukkan bahwa semakin intens penggunaan AI dalam suatu bidang studi, semakin besar peran burnout sebagai jembatan negatif menuju kesiapan karir.
+
+# Kesimpulan
+seuhi ini menemukan bukti bahwa burnout berfungsi sebagai **mediator parsial** dalam hubungan antara ketergantungan AI dan kesiapan karir mahasiswa. Sebesar 41.2% dari efek negatif ketergantungan AI bekerja melalui jalur burnout.
+
+Efek langsung yang tersisa (58.8%) menunjukkan bahwa ketergantungan AI juga mempengaruhi kesiapan karir melalui mekanisme lain yang tidak diukur dalam model ini kemungkinan termasuk berkurangnya kemampuan berpikir kritis mandiri, rendahnya kepercayaan diri saat wawancara, atau kurangnya kebiasaan belajar mandiri (*self-directed learning*).
+
+# Rekomendasi
+
+Berdasarkan temuan ini, terdapat dua arah intervensi yang relevan:
+
+**1. Intervensi berbasis wellbeing (mengatasi mediator):** Program konseling, manajemen stres, dan deteksi dini burnout, terutama di program studi dengan AI dependency tinggi seperti CS/IT.
+
+**2. Intervensi berbasis literasi AI (mengatasi akar masalah):** Kurikulum yang mengajarkan penggunaan AI secara kritis dan proporsional, tidak hanya mengandalkan output AI tanpa proses berpikir mandiri.
+
+> Pendekatan tunggal yang hanya menarget burnout mungkin tidak cukup. Dibutuhkan strategi yang juga mengatasi pola ketergantungan kognitif pada AI secara langsung.
+
+
+
+
+*Dibuat menggunakan R `r R.version$major`.`r R.version$minor` | tidyverse | Metode: Baron & Kenny (1986)*
