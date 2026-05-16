@@ -72,7 +72,7 @@ c. Menghasilkan insight berbasis data yang relevan untuk kebijakan wellbeing mah
 # Deskripsi Dataset
 
 ```{r load-data}
-df_raw <- read_csv("ai_dependency_career_anxiety_students.csv",show_col_types = FALSE)
+df_raw <- read_csv("C:/ai-mediation-analysis/data/ai_dependency_career_anxiety_students.csv",show_col_types = FALSE)
 
 cat("Jumlah observasi:", nrow(df_raw), "\n")
 cat("Jumlah variabel :", ncol(df_raw), "\n")
@@ -104,7 +104,7 @@ df <- df_raw |>
 cat("Jumlah BRis Setelah Cleaning:", nrow(df), "\n")
 ```
 
-Dari 15.000 observasi awal, seluruh baris memiliki data lengkap pada variabel utama sehingga tidak ada observasi yang dihapus.
+Dari 15.000 obser vasi awal, seluruh baris memiliki data lengkap pada variabel utama sehingga tidak ada observasi yang dihapus.
 
 # Exploratory Data Analysis
 
@@ -195,7 +195,7 @@ Efek tidak langsung (*indirect effect*) dihitung sebagai perkalian koefisien **a
 
 # Analisis Mediasi
 
-## 1. Total Effect (path c): X $\to$ Y
+## Total Effect (path c): X $\to$ Y
 
 ```{r step1}
 model_c <- lm(overall_career_readiness_score ~ ai_dependency_score,
@@ -205,7 +205,7 @@ coef_table(model_c)
 
 **Interpretasi:** AI dependency berhubungan negatif dan signifikan dengan career readiness (b = −0.091, p < 0.001). Syarat pertama Baron & Kenny terpenuhi sehingga analisis dapat dilanjutkan ke langkah berikutnya.
 
-## Step 2 — Path a: X $\to$ M
+## Path a: X $\to$ M
 
 ```{r step2}
 model_a <- lm(burnout_score ~ ai_dependency_score, data = df)
@@ -224,7 +224,7 @@ ggplot(df, aes(x = ai_dependency_score, y = burnout_score)) +
   tema
 ```
 
-## Step 3 & 4 — Path b + Direct Effect (c'): X + M $\to$ Y
+## Path b + Direct Effect (c'): X + M $\to$ Y
 
 ```{r step34}
 model_cprime <- lm(overall_career_readiness_score ~
